@@ -1,16 +1,29 @@
+use anyhow::Context;
 use axum::{
     extract::{
         ws::{Message, WebSocket},
-        WebSocketUpgrade,
+        State, WebSocketUpgrade,
     },
     http::StatusCode,
     response::IntoResponse,
     routing::get,
     Router, Server,
 };
-use futures::stream::{SplitSink, SplitStream, StreamExt};
-use std::net::SocketAddr;
-use tracing::debug;
+use futures::{
+    future::join,
+    stream::{SplitSink, SplitStream, StreamExt},
+    SinkExt,
+};
+use std::{
+    net::SocketAddr,
+    process::{ExitCode, ExitStatus},
+    sync::Arc,
+};
+use tokio::time::{sleep, Duration};
+use tracing::{debug, info};
+
+#[derive(Debug, Clone)]
+struct WsState {}
 
 #[tokio::main]
 async fn main() {
@@ -19,6 +32,7 @@ async fn main() {
 
     let router = Router::new()
         .route("/ws/chat", get(chat_ws_handler))
+        .with_state(Arc::new(WsState {}))
         .fallback(fallback_handler);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 23234));
@@ -28,33 +42,46 @@ async fn main() {
         .unwrap();
 }
 
-async fn chat_ws_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
-    ws.on_upgrade(handle_chat)
+async fn chat_ws_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<Arc<WsState>>,
+) -> impl IntoResponse {
+    ws.on_upgrade(|socket| handle_chat(socket, state))
 }
 
-async fn handle_chat(socket: WebSocket) {
+async fn handle_chat(socket: WebSocket, state: Arc<WsState>) {
     let (writer, reader) = socket.split();
-    tokio::spawn(write_chat(writer));
-    tokio::spawn(read_chat(reader));
+    let write_handler = tokio::spawn(write_chat(writer));
+    let read_handler = tokio::spawn(read_chat(reader));
+    tokio::select! {
+        _ = write_handler => (),
+        _ = read_handler => ()
+    }
 }
 
-async fn write_chat(mut writer: SplitSink<WebSocket, Message>) {}
+// For writing a message out.
+async fn write_chat(mut writer: SplitSink<WebSocket, Message>) -> anyhow::Result<()> {
+    loop {
+        writer.send(Message::Text("testing".to_owned())).await?;
+        sleep(Duration::from_secs(5)).await;
+    }
+}
 
+// For reading a message in.
 async fn read_chat(mut reader: SplitStream<WebSocket>) -> anyhow::Result<()> {
-    fn process(message: Message) {}
+    fn process(message: Message) -> anyhow::Result<()> {
+        let message_text = message.into_text()?;
+        info!("received the message {}", message_text);
+        Ok(())
+    }
 
     loop {
         match reader.next().await {
-            Some(message) => {
-                match message {
-                    Ok(message) => process(message),
-                    Err(e) => {
-                        debug!("message read from websocket reader was an error: {}", e);
-                        continue;
-                    }
-                };
+            Some(message) => process(message.context("read a broken message")?)?,
+            None => {
+                debug!("websocket stream done");
+                return Ok(());
             }
-            None => return Ok(()),
         }
     }
 }

@@ -12,15 +12,19 @@ cargo run
 
 When running chat-server-rs exposes one websocket endpoint at `http://localhost:23234/ws/chat`.
 
-To chat send a first message with a json: 
+## Sending messages
+
+Messages are formed as follows:
 
 ```json
 {
+    "type": "Message",
     "user": "<user_id>",
-    "channel": "<channel_id>"
+    "content": "<content string>"
 }
+
 ```
 
-This will connect you to the requested channel as the given user. You will then receive all messages passed to that channel.
+## Testing
 
-Messages are just strings.
+Postman has a good websocket client for testing.

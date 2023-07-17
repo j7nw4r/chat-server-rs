@@ -1,6 +1,6 @@
-# chat-server-rs
+# websocket-chat-server-rs
 
-`chat-server-rs` is a basic live chat server implemented in Rust.
+`websocket-chat-server-rs` is a basic live chat server implemented in Rust.
 
 ## Running
 
@@ -10,7 +10,7 @@ To run:
 cargo run
 ```
 
-When running chat-server-rs exposes one websocket endpoint at `http://localhost:23234/ws/chat`.
+When running `websocket-chat-server-rs` exposes one websocket endpoint at `http://localhost:23234/ws/chat`.
 
 ## Sending messages
 
